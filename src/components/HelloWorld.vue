@@ -1,57 +1,67 @@
 <template>
-  <div class="hello">
-    <h1>{{ msg }}</h1>
-    <p>
-      For a guide and recipes on how to configure / customize this project,<br>
-      check out the
-      <a href="https://cli.vuejs.org" target="_blank" rel="noopener">vue-cli documentation</a>.
-    </p>
-    <h3>Installed CLI Plugins</h3>
-    <ul>
-      <li><a href="https://github.com/vuejs/vue-cli/tree/dev/packages/%40vue/cli-plugin-babel" target="_blank" rel="noopener">babel</a></li>
-    </ul>
-    <h3>Essential Links</h3>
-    <ul>
-      <li><a href="https://vuejs.org" target="_blank" rel="noopener">Core Docs</a></li>
-      <li><a href="https://forum.vuejs.org" target="_blank" rel="noopener">Forum</a></li>
-      <li><a href="https://chat.vuejs.org" target="_blank" rel="noopener">Community Chat</a></li>
-      <li><a href="https://twitter.com/vuejs" target="_blank" rel="noopener">Twitter</a></li>
-      <li><a href="https://news.vuejs.org" target="_blank" rel="noopener">News</a></li>
-    </ul>
-    <h3>Ecosystem</h3>
-    <ul>
-      <li><a href="https://router.vuejs.org" target="_blank" rel="noopener">vue-router</a></li>
-      <li><a href="https://vuex.vuejs.org" target="_blank" rel="noopener">vuex</a></li>
-      <li><a href="https://github.com/vuejs/vue-devtools#vue-devtools" target="_blank" rel="noopener">vue-devtools</a></li>
-      <li><a href="https://vue-loader.vuejs.org" target="_blank" rel="noopener">vue-loader</a></li>
-      <li><a href="https://github.com/vuejs/awesome-vue" target="_blank" rel="noopener">awesome-vue</a></li>
-    </ul>
-  </div>
+    <div v-on:mouseup="mouseUp">
+        <canvas></canvas>
+        <div class="controller"
+             v-bind:style="controllerStyle">
+            <div v-on:mousedown="mouseDown('scale',$event)"
+                 class="scalePoint"></div>
+            <div v-on:mousedown="mouseDown('rotation',$event)"
+                 class="rotationPoint"></div>
+        </div>
+        <!--<div v-bind:style="registerPointerStyle"-->
+             <!--class="registerPoint" :style="{left:register.x+'px',top:register.y+'px'}"></div>-->
+        <div v-on:mousedown="mouseDown('pivot',$event)"
+             class="pivotPoint" :style="{left:pivot.x+'px',top:pivot.y+'px'}"></div>
+        <div>select bound:{{selectBound}}</div>
+        <!--<div>register:{{register}}</div>-->
+        <div>pivot:{{pivot}}</div>
+        <div>controller matrix:{{matrix}}</div>
+    </div>
 </template>
 
 <script>
-export default {
-  name: 'HelloWorld',
-  props: {
-    msg: String
-  }
-}
+    import HelloWorld from './HelloWorld.js'
+
+    export default HelloWorld;
 </script>
 
 <!-- Add "scoped" attribute to limit CSS to this component only -->
 <style scoped>
-h3 {
-  margin: 40px 0 0;
-}
-ul {
-  list-style-type: none;
-  padding: 0;
-}
-li {
-  display: inline-block;
-  margin: 0 10px;
-}
-a {
-  color: #42b983;
-}
+    .scalePoint {
+        border: 1px solid black;
+        position: absolute;
+        right: 0px;
+        bottom: 0px;
+        width: 10px;
+        height: 10px;
+        background-color: blue;
+    }
+
+    .rotationPoint {
+        border: 1px solid black;
+        border-radius: 10px;
+        position: absolute;
+        right: -10px;
+        bottom: -10px;
+        width: 10px;
+        height: 10px;
+        background-color: greenyellow;
+    }
+
+    .pivotPoint {
+        border: 1px solid white;
+        border-radius: 10px;
+        position: absolute;
+        width: 10px;
+        height: 10px;
+        transform: translate(-50%, -50%);
+    }
+
+    .registerPoint {
+        width: 10px;
+        height:10px;
+        border: 1px solid white;
+        position: absolute;
+        transform: translate(-50%, -50%)
+    }
 </style>
