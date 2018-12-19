@@ -14,7 +14,6 @@ function toBounds(rect) {
     return bounds;
 }
 
-
 function transferBounds(matrix, bounds) {
     const a = matrix.a;
     const b = matrix.b;
@@ -66,14 +65,6 @@ function transferBounds(matrix, bounds) {
     return bound;
 }
 
-function createBall(radius, color) {
-    let ball = new PIXI.Graphics();
-    ball.beginFill(color);
-    ball.drawCircle(0, 0, radius);
-    ball.endFill();
-    return ball;
-}
-
 const EMPTY_POINT = new PIXI.Point();
 
 export default {
@@ -84,37 +75,61 @@ export default {
             rect: new PIXI.Graphics(),
             circle: new PIXI.Graphics(),
             selectTargets: [],//选中的对象
-            selectBound: new PIXI.Bounds(),//选中对象的bound
+            selectRect: new PIXI.Rectangle(),//选中对象的rect
+            transferRectPoints: [],//选中对象变形之后的rect
+            selectBound: null,
             moveTarget: null,//鼠标移动的对象
-            pivot: new PIXI.Point(0, 0),//控制器-旋转点相对舞台的位置
-            // register: new PIXI.Point(0, 0),//注册点
-
-            matrix: new PIXI.Matrix(),//控制器-matrix
-            startMatrix: new PIXI.Matrix(),//鼠标按下时，记录此时的变形矩阵
+            selectPivot: new PIXI.Point(0, 0),//控制器-旋转点相对舞台的位置
+            parentMatrix: new PIXI.Matrix(),
+            startControlMatrix: new PIXI.Matrix(),//选择对象后，被选中对象组成的matrix，多选为标准matrix
+            controlMatrix: new PIXI.Matrix(),//操作过程中，控制器的matrix
             startP: new PIXI.Point(),//鼠标点
         }
     },
     computed: {
+        polyLinePoints: function () {
+            let str = '';
+            this.transferRectPoints.forEach(value => {
+                str += `${value.x} ${value.y} `
+            });
+            return str;
+        },
         controllerStyle: function () {
-            let transform = '';
-            let boundX = 0;
-            let boundY = 0;
-            if (this.matrix) {
-                transform = `matrix(${this.matrix.a},${this.matrix.b},${this.matrix.c},${this.matrix.d},${this.matrix.tx},${this.matrix.ty})`
-            }
-            if (this.selectBound) {
-                boundX = this.selectBound.x;
-                boundY = this.selectBound.y;
-            }
+
+            let rect = this.selectRect;
+            let bound = toBounds(rect);
+
+            let matrix = this.parentMatrix.clone().append(this.controlMatrix);
+            this.selectBound = transferBounds(matrix, bound);
+            this.transferRectPoints = [
+                matrix.apply({
+                    x: bound.minX,
+                    y: bound.minY
+                }),
+                matrix.apply({
+                    x: bound.minX,
+                    y: bound.maxY
+                }),
+                matrix.apply({
+                    x: bound.maxX,
+                    y: bound.maxY
+                }),
+                matrix.apply({
+                    x: bound.maxX,
+                    y: bound.minY
+                }),
+                matrix.apply({
+                    x: bound.minX,
+                    y: bound.minY
+                })
+            ];
+
             return {
-                transform: transform,
-                width: `${this.selectBound ? this.selectBound.width : 0}px`,
-                height: `${this.selectBound ? this.selectBound.height : 0}px`,
-                border: `1px solid greenyellow`,
+                width: `${this.selectBound ? this.selectBound.maxX : 0}px`,
+                height: `${this.selectBound ? this.selectBound.maxY : 0}px`,
                 position: `absolute`,
-                left: `${boundX}px`,
-                top: `${boundY}px`,
-                'transform-origin': `${-1 * boundX}px ${-1 * boundY}px`,
+                left: `0px`,
+                top: `0px`,
             }
         },
         selectState: function () {
@@ -123,7 +138,7 @@ export default {
     },
     name: 'HelloWorld',
     methods: {
-        getSelectTargetsLocalBound() {
+        getSelectTargetsLocalBounds() {
             let bound = null, otherBound = null;
             if (this.selectState < 1) return null;
             //单个元素，worldTransform*bound 就能够正确显示
@@ -154,79 +169,154 @@ export default {
 
             let sp = this.startP.clone();
             let ep = new PIXI.Point(e.clientX, e.clientY);
-            let target = this.selectTargets[0];
-            let localMatrix = target.localMatrix;
-            let worldMatrix = target.worldMatrix;
-            let oldPosition = target.position;
-            let oldRotation = target.rotation;
-            let oldScale = target.scale;
-            let oldPivot = target.pivot;
 
             if (this.moveTarget === 'scale') {
-                ep = worldMatrix.applyInverse(ep);
-                sp = worldMatrix.applyInverse(sp)
-                oldPosition = localMatrix.applyInverse(oldPosition)
+                this.selectTargets.map(value => {
+                    let transform = this.getScaleTransform(this.parentMatrix, value.localMatrix, this.selectPivot, sp, ep);
+                    this.setTransform(value.object, transform);
 
-                ep.x -= oldPosition.x;
-                ep.y -= oldPosition.y;
-                sp.x -= oldPosition.x;
-                sp.y -= oldPosition.y;
-
-
-                let newScale = {x: oldScale.x * ep.x / sp.x, y: oldScale.y * ep.y / sp.y};
-                target.object.scale = newScale;
+                    let controlTransform = this.getScaleTransform(this.parentMatrix, this.startControlMatrix, this.selectPivot, sp, ep)
+                    controlTransform.updateLocalTransform();
+                    this.controlMatrix = controlTransform.localTransform
+                });
 
             } else if (this.moveTarget === 'rotation') {
 
-                ep = localMatrix.apply(worldMatrix.applyInverse(ep));
-                sp = localMatrix.apply(worldMatrix.applyInverse(sp));
+                this.selectTargets.map(value => {
+                    let transform = this.getRotationTransform(this.parentMatrix, value.localMatrix, this.selectPivot, sp, ep);
+                    this.setTransform(value.object, transform);
 
-                ep.x -= oldPosition.x;
-                ep.y -= oldPosition.y;
-                sp.x -= oldPosition.x;
-                sp.y -= oldPosition.y;
-
-                let newRotation = Math.atan2(ep.y, ep.x) - Math.atan2(sp.y, sp.x) + oldRotation;
-                target.object.rotation = newRotation
+                    let controlTransform = this.getRotationTransform(this.parentMatrix, this.startControlMatrix, this.selectPivot, sp, ep)
+                    controlTransform.updateLocalTransform();
+                    this.controlMatrix = controlTransform.localTransform
+                });
 
             } else if (this.moveTarget === 'pivot') {
 
-                this.pivot.x = ep.x;
-                this.pivot.y = ep.y;
-
-                //拖动到相对原始空间的位置
-                ep = worldMatrix.applyInverse(ep);
-
-                let newPivot = {x: ep.x, y: ep.y};
-
-                //折算回target的父级空间，用以操作position
-                let offsetPosition = localMatrix.apply(newPivot);
-                oldPivot = localMatrix.apply(oldPivot);
-                let newPosition = {
-                    x: oldPosition.x + offsetPosition.x - oldPivot.x,
-                    y: oldPosition.y + offsetPosition.y - oldPivot.y
-                };
-                target.object.pivot = newPivot;
-                target.object.position = newPosition;
+                this.selectPivot.x = ep.x;
+                this.selectPivot.y = ep.y;
             }
+        },
+        setTransform(target, transform) {
+            target.scale = transform.scale.clone();
+            target.position = transform.position.clone();
+            target.skew = transform.skew.clone();
+            target.rotation = transform.rotation;
+            target.pivot = transform.pivot.clone();
+        },
+        getScaleTransform(parentMatrix, originMatrix, pivotInWorld, spInWorld, epInWorld) {
+            let transform = originMatrix.decompose(new PIXI.Transform());
+            let scale = transform.scale;
+            let position = transform.position;
+            let worldMatrix = parentMatrix.clone().append(originMatrix.clone());
+
+            //折算到显示对象内部空间
+            let spInLocal = worldMatrix.applyInverse(spInWorld);
+            let enInLocal = worldMatrix.applyInverse(epInWorld);
+            let pivotInLocal = worldMatrix.applyInverse(pivotInWorld);
+
+            //减去pivot值
+            spInLocal.x -= pivotInLocal.x;
+            spInLocal.y -= pivotInLocal.y;
+            enInLocal.x -= pivotInLocal.x;
+            enInLocal.y -= pivotInLocal.y;
+
+            let newScale = new PIXI.Point(scale.x * enInLocal.x / spInLocal.x, scale.y * enInLocal.y / spInLocal.y);
+            transform.scale = newScale;
+
+            let offsetPositionInLocal = {
+                x: -pivotInLocal.x * newScale.x / scale.x,
+                y: -pivotInLocal.y * newScale.y / scale.y
+            };
+            //折算到父坐标空间，计算出在父坐标空间中注册点相对于pivot的偏移量
+            let offsetPositionInParent = originMatrix.apply(offsetPositionInLocal);
+            offsetPositionInParent.x -= position.x;
+            offsetPositionInParent.y -= position.y;
+
+            let pivotInParent = originMatrix.apply(pivotInLocal);
+
+            //偏移量+pivot等于新的position
+            transform.position.x = offsetPositionInParent.x + pivotInParent.x;
+            transform.position.y = offsetPositionInParent.y + pivotInParent.y;
+
+            return transform;
+        },
+        getRotationTransform(parentMatrix, originMatrix, pivotInWorld, spInWorld, epInWorld) {
+            let transform = originMatrix.decompose(new PIXI.Transform());
+            let rotation = transform.rotation;
+            let position = transform.position;
+
+            //折算到显示对象父级空间
+            let spInParent = parentMatrix.applyInverse(spInWorld);
+            let epInParent = parentMatrix.applyInverse(epInWorld);
+            let pivotInParent = parentMatrix.applyInverse(pivotInWorld);
+
+            //减去父级空间对象的起始坐标
+            let offsetSp = {x: spInParent.x - pivotInParent.x, y: spInParent.y - pivotInParent.y}
+            let offsetEP = {x: epInParent.x - pivotInParent.x, y: epInParent.y - pivotInParent.y}
+            let offsetRotation = Math.atan2(offsetEP.y, offsetEP.x) - Math.atan2(offsetSp.y, offsetSp.x)
+            transform.rotation = offsetRotation + rotation;
+
+            let matrix = new PIXI.Matrix();
+            matrix.setTransform(0, 0, 0, 0, 1, 1, offsetRotation, 0, 0);
+            let offsetPosition = matrix.apply({x: position.x - pivotInParent.x, y: position.y - pivotInParent.y});
+
+            transform.position.x = offsetPosition.x + pivotInParent.x;
+            transform.position.y = offsetPosition.y + pivotInParent.y;
+
+            return transform;
+        },
+        changePivot(sp, ep, target) {
+            let localMatrix = target.localMatrix;
+            let worldMatrix = target.worldMatrix;
+            let oldPosition = target.position;
+            let oldPivot = target.selectPivot;
+
+            ep = worldMatrix.applyInverse(ep);
+
+            let newPivot = {x: ep.x, y: ep.y};
+
+            //折算回target的父级空间，用以操作position
+            let offsetPosition = localMatrix.apply(newPivot);
+            oldPivot = localMatrix.apply(oldPivot);
+            let newPosition = {
+                x: oldPosition.x + offsetPosition.x - oldPivot.x,
+                y: oldPosition.y + offsetPosition.y - oldPivot.y
+            };
+            target.object.selectPivot = newPivot;
+            target.object.position = newPosition;
         },
         mouseDown(type, e) {
             this.moveTarget = type;
-            this.startMatrix = this.matrix.clone();
             this.startP = new PIXI.Point(e.clientX, e.clientY);
 
-            this.selectTargets.map(value => {
-                value.localMatrix = value.object.transform.localTransform.clone();
-                value.worldMatrix = value.object.transform.worldTransform.clone();
-                value.position = value.object.position.clone();
-                value.scale = value.object.scale.clone();
-                value.pivot = value.object.pivot.clone();
-                value.rotation = value.object.rotation;
-            })
-
+            this.initControlInfo();
         },
         mouseUp() {
             this.moveTarget = null;
+        },
+        initControlInfo() {
+            if (this.selectState > 0) {
+                let firstTarget = this.selectTargets[0].object;
+                this.parentMatrix = firstTarget.parent.transform.worldTransform.clone();
+                this.selectPivot = firstTarget.toGlobal(EMPTY_POINT);
+
+                if (this.selectState === 1) {
+                    this.startControlMatrix = firstTarget.transform.localTransform.clone();
+                    this.controlMatrix = firstTarget.transform.localTransform.clone();
+                } else {
+                    //默认
+                }
+            }
+            this.selectTargets.map(value => {
+                value.localMatrix = value.object.transform.localTransform.clone();
+                value.position = value.object.position.clone();
+                value.scale = value.object.scale.clone();
+                value.selectPivot = value.object.pivot.clone();
+                value.rotation = value.object.rotation;
+            });
+
+            this.selectRect = this.getSelectTargetsLocalBounds();
         },
     },
     mounted() {
@@ -237,19 +327,13 @@ export default {
         this.rect.beginFill(0xff0000);
         this.rect.drawRect(-40, -40, 100, 100);
         this.rect.endFill();
-        this.rect.beginFill(0xffffff);
-        this.rect.drawRect(-2, -2, 4, 4);
-        this.rect.endFill();
 
         this.rect.x = this.rect.y = 200;
         this.rect.rotation = 30 * Math.PI / 180;
         this.rect.scale.set(1.5, 1.2);
 
         this.circle.beginFill(0xff0000);
-        this.circle.drawCircle(-10, -10, 50);
-        this.circle.endFill();
-        this.circle.beginFill(0xffffff);
-        this.circle.drawRect(-2, -2, 4, 4);
+        this.circle.drawCircle(0, 0, 50);
         this.circle.endFill();
         this.circle.rotation = 15 * Math.PI / 180;
         this.circle.x = -30;
@@ -266,23 +350,12 @@ export default {
         this.container.addChild(this.circle);
 
         this.selectTargets.push({object: this.circle});
-        // this.selectTargets.push({object: this.rect});
+        this.selectTargets.push({object: this.rect});
         // this.selectTargets.push({object: this.container});
 
-        //更新控制器的pivot位置
+        //初始化选框
         this.app.renderer.on('postrender', () => {
-            if (this.selectState > 0) {
-                let firstTarget = this.selectTargets[0].object;
-                if (this.selectState === 1) {
-                    this.matrix = firstTarget.transform.worldTransform;
-                    this.pivot = firstTarget.toGlobal(EMPTY_POINT);
-                } else {
-                    this.matrix = firstTarget.parent.transform.worldTransform;
-                    this.pivot = firstTarget.parent.toGlobal(EMPTY_POINT);
-                }
-            }
-
-            this.selectBound = this.getSelectTargetsLocalBound();
+            this.initControlInfo();
 
             this.app.renderer.removeListener('postrender');
         })
