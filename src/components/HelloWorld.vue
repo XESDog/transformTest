@@ -2,7 +2,7 @@
     <div v-on:mouseup="mouseUp">
         <canvas></canvas>
         <div v-bind:style="controllerStyle">
-            <svg v-bind:viewBox="'0 0 '+(selectBound.maxX)+' '+(selectBound.maxY)"
+            <svg v-bind:viewBox="'0 0 '+(selectBounds.maxX)+' '+(selectBounds.maxY)"
                  style="position: absolute">
                 <polyline :points="polyLinePoints" fill="none" stroke="white"></polyline>
             </svg>

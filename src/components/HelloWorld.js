@@ -74,10 +74,12 @@ export default {
             container: new PIXI.Container(),
             rect: new PIXI.Graphics(),
             circle: new PIXI.Graphics(),
+
             selectTargets: [],//选中的对象
             selectRect: new PIXI.Rectangle(),//选中对象的rect
+            selectBounds: null,//选中对象的bound
             transferRectPoints: [],//选中对象变形之后的rect
-            selectBound: null,
+
             moveTarget: null,//鼠标移动的对象
             selectPivot: new PIXI.Point(0, 0),//控制器-旋转点相对舞台的位置
             parentMatrix: new PIXI.Matrix(),
@@ -100,7 +102,7 @@ export default {
             let bound = toBounds(rect);
 
             let matrix = this.parentMatrix.clone().append(this.controlMatrix);
-            this.selectBound = transferBounds(matrix, bound);
+            this.selectBounds = transferBounds(matrix, bound);
             this.transferRectPoints = [
                 matrix.apply({
                     x: bound.minX,
@@ -125,8 +127,8 @@ export default {
             ];
 
             return {
-                width: `${this.selectBound ? this.selectBound.maxX : 0}px`,
-                height: `${this.selectBound ? this.selectBound.maxY : 0}px`,
+                width: `${this.selectBounds ? this.selectBounds.maxX : 0}px`,
+                height: `${this.selectBounds ? this.selectBounds.maxY : 0}px`,
                 position: `absolute`,
                 left: `0px`,
                 top: `0px`,
@@ -266,25 +268,8 @@ export default {
 
             return transform;
         },
-        changePivot(sp, ep, target) {
-            let localMatrix = target.localMatrix;
-            let worldMatrix = target.worldMatrix;
-            let oldPosition = target.position;
-            let oldPivot = target.selectPivot;
-
-            ep = worldMatrix.applyInverse(ep);
-
-            let newPivot = {x: ep.x, y: ep.y};
-
-            //折算回target的父级空间，用以操作position
-            let offsetPosition = localMatrix.apply(newPivot);
-            oldPivot = localMatrix.apply(oldPivot);
-            let newPosition = {
-                x: oldPosition.x + offsetPosition.x - oldPivot.x,
-                y: oldPosition.y + offsetPosition.y - oldPivot.y
-            };
-            target.object.selectPivot = newPivot;
-            target.object.position = newPosition;
+        changePivot(sp, ep) {
+            this.selectPivot = ep;
         },
         mouseDown(type, e) {
             this.moveTarget = type;
@@ -299,7 +284,6 @@ export default {
             if (this.selectState > 0) {
                 let firstTarget = this.selectTargets[0].object;
                 this.parentMatrix = firstTarget.parent.transform.worldTransform.clone();
-                this.selectPivot = firstTarget.toGlobal(EMPTY_POINT);
 
                 if (this.selectState === 1) {
                     this.startControlMatrix = firstTarget.transform.localTransform.clone();
@@ -325,7 +309,7 @@ export default {
 
         this.app = new PIXI.Application({view: this.$el.getElementsByTagName('canvas')[0]})
         this.rect.beginFill(0xff0000);
-        this.rect.drawRect(-40, -40, 100, 100);
+        this.rect.drawRect(0, 0, 100, 100);
         this.rect.endFill();
 
         this.rect.x = this.rect.y = 200;
@@ -333,7 +317,8 @@ export default {
         this.rect.scale.set(1.5, 1.2);
 
         this.circle.beginFill(0xff0000);
-        this.circle.drawCircle(0, 0, 50);
+        // this.circle.drawCircle(0, 0, 50);
+        this.circle.drawCircle(50, 50, 50);
         this.circle.endFill();
         this.circle.rotation = 15 * Math.PI / 180;
         this.circle.x = -30;
@@ -341,6 +326,7 @@ export default {
 
         this.container.x = 200;
         this.container.y = 200;
+        this.container.pivot.set(100,100)
         this.container.rotation = 15 * Math.PI / 180;
         this.container.scale.set(1.1, 1.2);
 
@@ -356,6 +342,9 @@ export default {
         //初始化选框
         this.app.renderer.on('postrender', () => {
             this.initControlInfo();
+
+            this.selectPivot.x = this.parentMatrix.tx;
+            this.selectPivot.y = this.parentMatrix.ty;
 
             this.app.renderer.removeListener('postrender');
         })
